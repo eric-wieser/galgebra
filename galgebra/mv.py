@@ -1487,11 +1487,10 @@ class Sdop(object):
             return new_terms
 
     def simplify(self, modes=simplify):
-        coefs, pdiffs = list(zip(*self.terms))
-        new_coefs = []
-        for coef in coefs:
-            new_coefs.append(metric.apply_function_list(modes,coef))
-        return Sdop(new_coefs, list(pdiffs), ga=self.Ga)
+        return Sdop([
+            (metric.apply_function_list(modes, coef), pdiff)
+            for coef, pdiff in self.terms
+        ], ga=self.Ga)
 
     def _with_sorted_terms(self):
         # self.terms.sort(key=operator.itemgetter(1), cmp=Pdop.compare)
@@ -1584,9 +1583,7 @@ class Sdop(object):
             else:
                 self.Ga = Sdop.ga
 
-        if len(args[0]) == 0:  # identity Dop
-            self.terms = ((S(1), self.Ga.Pdop_identity),)
-        elif len(args[0]) == 1 and isinstance(args[0],Symbol):  # Simple Pdop of order 1
+        if len(args[0]) == 1 and isinstance(args[0],Symbol):  # Simple Pdop of order 1
             self.terms = ((S(1), self.Ga.pdop(args[0])),)
         else:
             if len(args) == 2 and isinstance(args[0],list) and isinstance(args[1],list):
@@ -1620,27 +1617,27 @@ class Sdop(object):
         if isinstance(sdop1, Sdop) and isinstance(sdop1, Sdop):
             if sdop1.Ga != sdop2.Ga:
                 raise ValueError('In Sdop.Add sdop1.Ga != sdop2.Ga.')
-            coefs1, pdiffs1 = list(zip(*sdop1.terms))
-            coefs2, pdiffs2 = list(zip(*sdop2.terms))
 
-            pdiffs1 = list(pdiffs1)
-            pdiffs2 = list(pdiffs2)
+            pdiffs1 = [pdiff for _, pdiff in sdop1.terms]
+            pdiffs2 = [pdiff for _, pdiff in sdop2.terms]
 
             pdiffs = pdiffs1 + [x for x in pdiffs2 if x not in pdiffs1]
             coefs = len(pdiffs) * [S(0)]
 
-            for pdiff in pdiffs1:
+            for coef, pdiff in sdop1.terms:
                 index = pdiffs.index(pdiff)
-                coef = coefs1[pdiffs1.index(pdiff)]
                 coefs[index] += coef
 
-            for pdiff in pdiffs2:
+            for coef, pdiff in sdop2.terms:
                 index = pdiffs.index(pdiff)
-                coef = coefs2[pdiffs2.index(pdiff)]
                 coefs[index] += coef
 
             sdop_sum = Sdop(coefs, pdiffs, ga=sdop1.Ga)
         elif isinstance(sdop1, Sdop):
+            raise NotImplementedError  # pragma: no cover
+            """
+            Code below raised NameError for `coef` and `pdiff`
+
             coefs, pdiffs = list(zip(*sdop1.terms))
             if sdop1.Ga.Pdop_identity in pdiffs:
                 index = pdiffs.index(sdop1.Ga.Pdop_identity)
@@ -1649,7 +1646,12 @@ class Sdop(object):
                 coef.append(sdop2)
                 pdiff.append(sdop1.Ga.Pdop_identity)
             return Sdop(coefs, pdiffs, ga=sdop1.Ga)
+            """
         else:
+            raise NotImplementedError  # pragma: no cover
+            """
+            Code below raised NameError for `coef` and `pdiff`
+
             coefs, pdiffs = list(zip(*sdop2.terms))
             if sdop2.Ga.Pdop_identity in pdiffs:
                 index = pdiffs.index(sdop2.Ga.Pdop_identity)
@@ -1658,6 +1660,7 @@ class Sdop(object):
                 coef.append(sdop1)
                 pdiff.append(sdop2.Ga.Pdop_identity)
             sdop_sum = Sdop(coefs, pdiffs, ga=sdop2.Ga)
+            """
 
         return Sdop.consolidate_coefs(sdop_sum)
 
@@ -2024,32 +2027,29 @@ class Dop(object):
         self.dop_fmt = kwargs['fmt_dop']  # Partial derivative output format (default 1)
         self.title = None
 
-        if len(args[0]) == 0:  # identity Dop
-            self.terms = [(S(1),self.Ga.Pdop_identity)]
-        else:
-            if len(args) == 2:
-                if len(args[0]) != len(args[1]):
-                    raise ValueError('In Dop.__init__ coefficent list and Pdop list must be same length.')
-                self.terms = tuple(zip(args[0], args[1]))
-            elif len(args) == 1:
-                if isinstance(args[0][0][0], Mv):  # Mv expansion [(Mv, Pdop)]
-                    self.terms = tuple(args[0])
-                elif isinstance(args[0][0][0], Sdop):  # Sdop expansion [(Sdop, Mv)]
-                    coefs = []
-                    pdiffs = []
-                    for (sdop, mv) in args[0]:
-                        for (coef, pdiff) in sdop.terms:
-                            if pdiff in pdiffs:
-                                index = pdiffs.index(pdiff)
-                                coefs[index] += coef * mv
-                            else:
-                                pdiffs.append(pdiff)
-                                coefs.append(coef * mv)
-                    self.terms = tuple(zip(coefs, pdiffs))
-                else:
-                    raise ValueError('In Dop.__init__ args[0] form not allowed. args = ' + str(args))
+        if len(args) == 2:
+            if len(args[0]) != len(args[1]):
+                raise ValueError('In Dop.__init__ coefficent list and Pdop list must be same length.')
+            self.terms = tuple(zip(args[0], args[1]))
+        elif len(args) == 1:
+            if isinstance(args[0][0][0], Mv):  # Mv expansion [(Mv, Pdop)]
+                self.terms = tuple(args[0])
+            elif isinstance(args[0][0][0], Sdop):  # Sdop expansion [(Sdop, Mv)]
+                coefs = []
+                pdiffs = []
+                for (sdop, mv) in args[0]:
+                    for (coef, pdiff) in sdop.terms:
+                        if pdiff in pdiffs:
+                            index = pdiffs.index(pdiff)
+                            coefs[index] += coef * mv
+                        else:
+                            pdiffs.append(pdiff)
+                            coefs.append(coef * mv)
+                self.terms = tuple(zip(coefs, pdiffs))
             else:
-                raise ValueError('In Dop.__init__ length of args must be 1 or 2.')
+                raise ValueError('In Dop.__init__ args[0] form not allowed. args = ' + str(args))
+        else:
+            raise ValueError('In Dop.__init__ length of args must be 1 or 2.')
 
 
     def simplify(self, modes=simplify):
@@ -2142,15 +2142,10 @@ class Dop(object):
         return Dop.Add(dop, self)
 
     def __neg__(self):
-
-        coefs, pdiffs = list(zip(*self.terms))
-
-        coefs = [-x for x in coefs]
-
-        neg = Dop(coefs, pdiffs, ga=self.Ga,
-                  cmpflg=self.cmpflg)
-
-        return neg
+        return Dop(
+            [(-coef, pdiff) for coef, pdiff in self.terms],
+            ga=self.Ga, cmpflg=self.cmpflg
+        )
 
     def __sub__(self, dop):
         return Dop.Add(self, -dop)
