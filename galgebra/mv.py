@@ -9,7 +9,7 @@ from functools import reduce
 from typing import List, Any, Tuple, Union
 
 from sympy import (
-    Symbol, Function, S, expand, Add,
+    Symbol, Function, S, expand, Add, Expr
     sin, cos, sinh, cosh, sqrt, trigsimp,
     simplify, diff, Rational, Expr, Abs, collect,
 )
@@ -31,7 +31,7 @@ half = Rational(1, 2)
 ########################### Multivector Class ##########################
 
 
-class Mv(object):
+class Mv(Expr):
     """
     Wrapper class for multivector objects (``self.obj``) so that it is easy
     to overload operators (``*``, ``^``, ``|``, ``<``, ``>``)  for the various
@@ -260,7 +260,7 @@ class Mv(object):
     _make_grade2 = _make_bivector
     _make_even = _make_spinor
 
-    def __init__(self, *args, ga, recp=None, coords=None, **kwargs):
+    def __new__(cls, *args, ga, recp=None, coords=None, **kwargs):
         """
         __init__(self, *args, ga, recp=None, **kwargs)
 
@@ -325,36 +325,27 @@ class Mv(object):
             It is incorrectly described internally as the coordinates to be
             used with multivector functions.
         """
-        kw = _KwargParser('__init__', kwargs)
-        self.Ga = ga
-        self.recp = recp  # not used
+        obj = None
+        is_blade_rep = True
+        i_grade = None
 
-        self.char_Mv = False
-        self.i_grade = None  # if pure grade mv, grade value
-        self.grades = None  # list of grades in mv
-        self.is_blade_rep = True  # flag for blade representation
-        self.blade_flg = None  # if is_blade is called flag is set
-        self.versor_flg = None  # if is_versor is called flag is set
-        self.coords = self.Ga.coords
-        self.title = None
-
+        self = super().__new__(cls, obj)
+        kw = _KwargParser('__new__', kwargs)
         if len(args) == 0:  # default constructor 0
-            self.obj = S(0)
-            self.i_grade = 0
+            obj = S(0)
+            i_grade = 0
             kw.reject_remaining()
         elif len(args) == 1 and not isinstance(args[0], str):  # copy constructor
             x = args[0]
             if isinstance(x, Mv):
-                self.obj = x.obj
-                self.is_blade_rep = x.is_blade_rep
-                self.i_grade = x.i_grade
+                obj = x.obj
+                is_blade_rep = x.is_blade_rep
+                i_grade = x.i_grade
             else:
                 if isinstance(x, Expr):  # copy constructor for obj expression
                     self.obj = x
                 else:  # copy constructor for scalar obj expression
                     self.obj = S(x)
-                self.is_blade_rep = True
-                self.characterise_Mv()
             kw.reject_remaining()
         else:
             if isinstance(args[1], str):
@@ -363,21 +354,38 @@ class Mv(object):
                 make_func = getattr(Mv, '_make_{}'.format(mode), None)
                 if make_func is None:
                     raise ValueError('{!r} is not an allowed multivector type.'.format(mode))
-                self.obj = make_func(self.Ga, *make_args, **kwargs)
+                obj = make_func(self.Ga, *make_args, **kwargs)
             elif isinstance(args[1], int):  # args[1] = r (integer) Construct grade r multivector
                 if args[1] == 0:
                     # _make_scalar interprets its coefficient argument differently
                     make_args = list(args)
                     make_args.pop(1)
-                    self.obj = Mv._make_scalar(self.Ga, *make_args, **kwargs)
+                    obj = Mv._make_scalar(self.Ga, *make_args, **kwargs)
                 else:
-                    self.obj = Mv._make_grade(self.Ga, *args, **kwargs)
+                    obj = Mv._make_grade(self.Ga, *args, **kwargs)
             else:
                 raise TypeError("Expected string or int")
 
-            if isinstance(args[0], str):
-                self.title = args[0]
-            self.characterise_Mv()
+        # finally can call the sympy base class now that we have our object
+        self = super().__new__(cls, obj)
+        self.obj = obj
+
+        self.Ga = ga
+        self.recp = recp  # not used
+
+        self.char_Mv = False
+        self.i_grade = i_grade  # if pure grade mv, grade value
+        self.grades = None  # list of grades in mv
+        self.is_blade_rep = is_blade_rep  # flag for blade representation
+        self.blade_flg = None  # if is_blade is called flag is set
+        self.versor_flg = None  # if is_versor is called flag is set
+        self.coords = self.Ga.coords
+        self.title = None
+
+
+        if isinstance(args[0], str):
+            self.title = args[0]
+        self.characterise_Mv()
 
     ################# Multivector member functions #####################
 
