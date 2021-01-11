@@ -9,6 +9,7 @@ import warnings
 from typing import List, Tuple, Any, Iterable
 
 from sympy import Symbol, S, Add, simplify, diff, Expr, Dummy
+from sympy.printing.pretty.pretty import PrettyPrinter as _PrettyPrinter
 
 from . import printer
 from . import metric
@@ -138,6 +139,16 @@ class Sdop(_BaseDop):
         s = s.replace('+ -', '- ')
         s = s[:-3]
         return s
+
+    def _pretty(self, print_obj: _PrettyPrinter):
+        from sympy.printing.pretty.stringpict import prettyForm
+        # The default for the pretty-printer is to use `str(x)`. We patch
+        # `__repr__(x)` to use our GaPrinter customizations in
+        # `galgebra.printer`, so for consistency with old behavior, we use
+        # `repr` instead of `str` here too.
+        #
+        # TODO: implement a full pretty-printer.
+        return prettyForm(repr(self))
 
     def _latex(self, print_obj):
         if len(self.terms) == 0:
